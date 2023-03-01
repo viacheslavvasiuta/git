@@ -51,6 +51,12 @@ struct config_source {
 };
 #define CONFIG_SOURCE_INIT { 0 }
 
+struct config_reader {
+	struct config_source *source;
+};
+/* Only public functions should reference the_reader. */
+static struct config_reader the_reader;
+
 /*
  * These variables record the "current" config source, which
  * can be accessed by parsing callbacks.
@@ -66,6 +72,9 @@ struct config_source {
  * at the variables, it's either a bug for it to be called in the first place,
  * or it's a function which can be reused for non-config purposes, and should
  * fall back to some sane behavior).
+ *
+ * FIXME "cf" has been replaced by "the_reader.source", remove
+ * "cf" once we plumb "the_reader" through all of the callback functions.
  */
 static struct config_source *cf;
 static struct key_value_info *current_config_kvi;
@@ -79,20 +88,25 @@ static struct key_value_info *current_config_kvi;
  */
 static enum config_scope current_parsing_scope;
 
-static inline void config_state_push_source(struct config_source *top)
+static inline void config_reader_push_source(struct config_reader *reader,
+					     struct config_source *top)
 {
-	if (cf)
-		top->prev = cf;
-	cf = top;
+	if (reader->source)
+		top->prev = reader->source;
+	reader->source = top;
+	/* FIXME remove this when cf is removed. */
+	cf = reader->source;
 }
 
-static inline struct config_source *config_state_pop_source()
+static inline struct config_source *config_reader_pop_source(struct config_reader *reader)
 {
 	struct config_source *ret;
-	if (!cf)
+	if (!reader->source)
 		BUG("tried to pop config source, but we weren't reading config");
-	ret = cf;
-	cf = cf->prev;
+	ret = reader->source;
+	reader->source = reader->source->prev;
+	/* FIXME remove this when cf is removed. */
+	cf = reader->source;
 	return ret;
 }
 
@@ -732,7 +746,7 @@ int git_config_from_parameters(config_fn_t fn, void *data)
 	struct config_source source = CONFIG_SOURCE_INIT;
 
 	source.origin_type = CONFIG_ORIGIN_CMDLINE;
-	config_state_push_source(&source);
+	config_reader_push_source(&the_reader, &source);
 
 	env = getenv(CONFIG_COUNT_ENVIRONMENT);
 	if (env) {
@@ -790,7 +804,7 @@ out:
 	strbuf_release(&envvar);
 	strvec_clear(&to_free);
 	free(envw);
-	config_state_pop_source();
+	config_reader_pop_source(&the_reader);
 	return ret;
 }
 
@@ -1325,7 +1339,7 @@ int git_config_int(const char *name, const char *value)
 {
 	int ret;
 	if (!git_parse_int(value, &ret))
-		die_bad_number(cf, name, value);
+		die_bad_number(the_reader.source, name, value);
 	return ret;
 }
 
@@ -1333,7 +1347,7 @@ int64_t git_config_int64(const char *name, const char *value)
 {
 	int64_t ret;
 	if (!git_parse_int64(value, &ret))
-		die_bad_number(cf, name, value);
+		die_bad_number(the_reader.source, name, value);
 	return ret;
 }
 
@@ -1341,7 +1355,7 @@ unsigned long git_config_ulong(const char *name, const char *value)
 {
 	unsigned long ret;
 	if (!git_parse_ulong(value, &ret))
-		die_bad_number(cf, name, value);
+		die_bad_number(the_reader.source, name, value);
 	return ret;
 }
 
@@ -1349,7 +1363,7 @@ ssize_t git_config_ssize_t(const char *name, const char *value)
 {
 	ssize_t ret;
 	if (!git_parse_ssize_t(value, &ret))
-		die_bad_number(cf, name, value);
+		die_bad_number(the_reader.source, name, value);
 	return ret;
 }
 
@@ -1955,7 +1969,8 @@ int git_default_config(const char *var, const char *value, void *cb)
  * fgetc, ungetc, ftell of top need to be initialized before calling
  * this function.
  */
-static int do_config_from(struct config_source *top, config_fn_t fn, void *data,
+static int do_config_from(struct config_reader *reader,
+			  struct config_source *top, config_fn_t fn, void *data,
 			  const struct config_options *opts)
 {
 	int ret;
@@ -1966,22 +1981,23 @@ static int do_config_from(struct config_source *top, config_fn_t fn, void *data,
 	top->total_len = 0;
 	strbuf_init(&top->value, 1024);
 	strbuf_init(&top->var, 1024);
-	config_state_push_source(top);
+	config_reader_push_source(reader, top);
 
 	ret = git_parse_source(top, fn, data, opts);
 
 	/* pop config-file parsing state stack */
 	strbuf_release(&top->value);
 	strbuf_release(&top->var);
-	config_state_pop_source();
+	config_reader_pop_source(reader);
 
 	return ret;
 }
 
-static int do_config_from_file(config_fn_t fn,
-		const enum config_origin_type origin_type,
-		const char *name, const char *path, FILE *f,
-		void *data, const struct config_options *opts)
+static int do_config_from_file(struct config_reader *reader,
+			       config_fn_t fn,
+			       const enum config_origin_type origin_type,
+			       const char *name, const char *path, FILE *f,
+			       void *data, const struct config_options *opts)
 {
 	struct config_source top = CONFIG_SOURCE_INIT;
 	int ret;
@@ -1996,15 +2012,15 @@ static int do_config_from_file(config_fn_t fn,
 	top.do_ftell = config_file_ftell;
 
 	flockfile(f);
-	ret = do_config_from(&top, fn, data, opts);
+	ret = do_config_from(reader, &top, fn, data, opts);
 	funlockfile(f);
 	return ret;
 }
 
 static int git_config_from_stdin(config_fn_t fn, void *data)
 {
-	return do_config_from_file(fn, CONFIG_ORIGIN_STDIN, "", NULL, stdin,
-				   data, NULL);
+	return do_config_from_file(&the_reader, fn, CONFIG_ORIGIN_STDIN, "",
+				   NULL, stdin, data, NULL);
 }
 
 int git_config_from_file_with_options(config_fn_t fn, const char *filename,
@@ -2018,8 +2034,8 @@ int git_config_from_file_with_options(config_fn_t fn, const char *filename,
 		BUG("filename cannot be NULL");
 	f = fopen_or_warn(filename, "r");
 	if (f) {
-		ret = do_config_from_file(fn, CONFIG_ORIGIN_FILE, filename,
-					  filename, f, data, opts);
+		ret = do_config_from_file(&the_reader, fn, CONFIG_ORIGIN_FILE,
+					  filename, filename, f, data, opts);
 		fclose(f);
 	}
 	return ret;
@@ -2048,7 +2064,7 @@ int git_config_from_mem(config_fn_t fn,
 	top.do_ungetc = config_buf_ungetc;
 	top.do_ftell = config_buf_ftell;
 
-	return do_config_from(&top, fn, data, opts);
+	return do_config_from(&the_reader, &top, fn, data, opts);
 }
 
 int git_config_from_blob_oid(config_fn_t fn,
@@ -3791,8 +3807,8 @@ const char *current_config_origin_type(void)
 	int type;
 	if (current_config_kvi)
 		type = current_config_kvi->origin_type;
-	else if(cf)
-		type = cf->origin_type;
+	else if(the_reader.source)
+		type = the_reader.source->origin_type;
 	else
 		BUG("current_config_origin_type called outside config callback");
 
@@ -3837,8 +3853,8 @@ const char *current_config_name(void)
 	const char *name;
 	if (current_config_kvi)
 		name = current_config_kvi->filename;
-	else if (cf)
-		name = cf->name;
+	else if (the_reader.source)
+		name = the_reader.source->name;
 	else
 		BUG("current_config_name called outside config callback");
 	return name ? name : "";
@@ -3857,7 +3873,7 @@ int current_config_line(void)
 	if (current_config_kvi)
 		return current_config_kvi->linenr;
 	else
-		return cf->linenr;
+		return the_reader.source->linenr;
 }
 
 int lookup_config(const char **mapping, int nr_mapping, const char *var)

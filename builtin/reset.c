@@ -317,7 +317,8 @@ int cmd_reset(int argc, const char **argv, const char *prefix)
 	int reset_type = NONE, update_ref_status = 0, quiet = 0;
 	int no_refresh = 0;
 	int patch_mode = 0, pathspec_file_nul = 0, unborn;
-	const char *rev, *pathspec_from_file = NULL;
+	const char *rev;
+	char *pathspec_from_file = NULL;
 	struct object_id oid;
 	struct pathspec pathspec;
 	int intent_to_add = 0;
@@ -495,5 +496,6 @@ int cmd_reset(int argc, const char **argv, const char *prefix)
 
 cleanup:
 	clear_pathspec(&pathspec);
+	free(pathspec_from_file);
 	return update_ref_status;
 }

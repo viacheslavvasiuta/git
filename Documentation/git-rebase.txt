@@ -537,16 +537,17 @@ See also INCOMPATIBLE OPTIONS below.
 	by recreating the merge commits. Any resolved merge conflicts or
 	manual amendments in these merge commits will have to be
 	resolved/re-applied manually. `--no-rebase-merges` can be used to
-	countermand a previous `--rebase-merges`.
+	countermand both the `rebase.rebaseMerges` config option and a previous
+	`--rebase-merges`.
 +
 When rebasing merges, there are two modes: `rebase-cousins` and
-`no-rebase-cousins`. If the mode is not specified, it defaults to
-`no-rebase-cousins`. In `no-rebase-cousins` mode, commits which do not have
-`<upstream>` as direct ancestor will keep their original branch point, i.e.
-commits that would be excluded by linkgit:git-log[1]'s `--ancestry-path`
-option will keep their original ancestry by default. In `rebase-cousins` mode,
-such commits are instead rebased onto `<upstream>` (or `<onto>`, if
-specified).
+`no-rebase-cousins`. If the mode is not specified on the command line or in
+the `rebase.rebaseMerges` config option, it defaults to `no-rebase-cousins`.
+In `no-rebase-cousins` mode, commits which do not have `<upstream>` as direct
+ancestor will keep their original branch point, i.e. commits that would be
+excluded by linkgit:git-log[1]'s `--ancestry-path` option will keep their
+original ancestry by default. In `rebase-cousins` mode, such commits are
+instead rebased onto `<upstream>` (or `<onto>`, if specified).
 +
 It is currently only possible to recreate the merge commits using the
 `ort` merge strategy; different merge strategies can be used only via

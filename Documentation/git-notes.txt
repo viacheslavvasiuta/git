@@ -9,9 +9,9 @@ SYNOPSIS
 --------
 [verse]
 'git notes' [list [<object>]]
-'git notes' add [-f] [--allow-empty] [-F <file> | -m <msg> | (-c | -C) <object>] [<object>]
+'git notes' add [-f] [--allow-empty] [--separator=<paragraph-break>] [-F <file> | -m <msg> | (-c | -C) <object>] [<object>]
 'git notes' copy [-f] ( --stdin | <from-object> [<to-object>] )
-'git notes' append [--allow-empty] [-F <file> | -m <msg> | (-c | -C) <object>] [<object>]
+'git notes' append [--allow-empty] [--separator=<paragraph-break>] [-F <file> | -m <msg> | (-c | -C) <object>] [<object>]
 'git notes' edit [--allow-empty] [<object>]
 'git notes' show [<object>]
 'git notes' merge [-v | -q] [-s <strategy> ] <notes-ref>
@@ -65,7 +65,9 @@ add::
 	However, if you're using `add` interactively (using an editor
 	to supply the notes contents), then - instead of aborting -
 	the existing notes will be opened in the editor (like the `edit`
-	subcommand).
+	subcommand). If you specify multiple `-m` and `-F`, a blank
+	line will be inserted between the messages. Use the `--separator`
+	option to insert other delimiters.
 
 copy::
 	Copy the notes for the first object onto the second object (defaults to
@@ -87,6 +89,12 @@ the command can read the input given to the `post-rewrite` hook.)
 append::
 	Append to the notes of an existing object (defaults to HEAD).
 	Creates a new notes object if needed.
+	The default delimiter is a blank line, use the `--separator`
+	option to insert other delimiters. More specifically, if the
+	note and the message are not empty, the delimiter will be
+	inserted between them. If you specify multiple `-m` and `-F`
+	options, the delimiter will be inserted between the messages
+	too.
 
 edit::
 	Edit the notes for a given object (defaults to HEAD).
@@ -158,6 +166,10 @@ OPTIONS
 --allow-empty::
 	Allow an empty note object to be stored. The default behavior is
 	to automatically remove empty notes.
+
+--separator <paragraph-break>::
+	The '<paragraph-break>' inserted between paragraphs.
+	A blank line by default.
 
 --ref <ref>::
 	Manipulate the notes tree in <ref>.  This overrides

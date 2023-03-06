@@ -1,0 +1,78 @@
+git-ahead-behind(1)
+===================
+
+NAME
+----
+git-ahead-behind - Count the commits on each side of a revision range
+
+SYNOPSIS
+--------
+[verse]
+'git ahead-behind' --base=<ref> [ --contains ] [ --stdin | <revs> ]
+
+DESCRIPTION
+-----------
+
+Given a list of commit ranges, report the number of commits reachable from
+each of the sides of the range, but not the other. Consider a commit range
+specified as `<base>...<tip>`, allowing for the following definitions:
+
+* The `<tip>` is *ahead* of `<base>` by the number of commits reachable
+  from `<tip>` but not reachable from `<base>`. This is the same as the
+  number of the commits in the range `<base>..<tip>`.
+
+* The `<tip>` is *behind* `<base>` by the number of commits reachable from
+  `<base>` but not reachble from `<tip>`. This is the same as the number
+  of commits in the range `<tip>..<base>`.
+
+The sum of the ahead and behind counts equals the number of commits in the
+symmetric difference, the range `<base>...<tip>`.
+
+Multiple revisions may be specified, and they are all compared against a
+common base revision, as specified by the `--base` option. The values are
+reported to stdout one line at a time as follows:
+
+---
+  <rev> <ahead> <behind>
+---
+
+There will be exactly one line per input revision, but the lines may be
+in an arbitrary order.
+
+If the `--contains` option is provided, then the output will list the
+`<tip>` refs are reachable from the provided `<base>`, one per line.
+
+
+OPTIONS
+-------
+--base=<ref>::
+	Specify that `<ref>` should be used as a common base for all
+	provided revisions that are not specified in the form of a range.
+
+--stdin::
+	Read revision tips and ranges from stdin instead of from the
+	command-line.
+
+--contains::
+	Specify that instead of counting the ahead/behind values, only
+	indicate whether each tip reference is reachable from the base. In
+	this mode, the output format changes to include only the name of
+	each tip by name, one per line, and only the tips reachable from
+	the base are included in the output.
+
+--ignore-missing::
+	When parsing tip references, ignore any references that are not
+	found. This is useful when operating in an environment where a
+	reference could be deleted between reading the reference and
+	starting the `git ahead-behind` process.
+
+
+SEE ALSO
+--------
+linkgit:git-branch[1]
+linkgit:git-rev-list[1]
+linkgit:git-tag[1]
+
+GIT
+---
+Part of the linkgit:git[1] suite

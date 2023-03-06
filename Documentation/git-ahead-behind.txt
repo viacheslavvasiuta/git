@@ -8,7 +8,7 @@ git-ahead-behind - Count the commits on each side of a revision range
 SYNOPSIS
 --------
 [verse]
-'git ahead-behind' --base=<ref> [ --stdin | <revs> ]
+'git ahead-behind' --base=<ref> [ --contains ] [ --stdin | <revs> ]
 
 DESCRIPTION
 -----------
@@ -39,6 +39,9 @@ reported to stdout one line at a time as follows:
 There will be exactly one line per input revision, but the lines may be
 in an arbitrary order.
 
+If the `--contains` option is provided, then the output will list the
+`<tip>` refs are reachable from the provided `<base>`, one per line.
+
 
 OPTIONS
 -------
@@ -49,6 +52,13 @@ OPTIONS
 --stdin::
 	Read revision tips and ranges from stdin instead of from the
 	command-line.
+
+--contains::
+	Specify that instead of counting the ahead/behind values, only
+	indicate whether each tip reference is reachable from the base. In
+	this mode, the output format changes to include only the name of
+	each tip by name, one per line, and only the tips reachable from
+	the base are included in the output.
 
 --ignore-missing::
 	When parsing tip references, ignore any references that are not

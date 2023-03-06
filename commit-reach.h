@@ -134,4 +134,11 @@ struct ahead_behind_count {
 void ahead_behind(struct commit **commits, size_t commits_nr,
 		  struct ahead_behind_count *counts, size_t counts_nr);
 
+/*
+ * Populate the "util" of each string_list item with the boolean value
+ * corresponding to "can 'base' reach this tip?"
+ */
+void tips_reachable_from_base(struct commit *base,
+			      struct string_list *tips);
+
 #endif

@@ -5,7 +5,7 @@
 #include "commit-reach.h"
 
 static const char * const ahead_behind_usage[] = {
-	N_("git ahead-behind --base=<ref> [ --stdin | <revs> ]"),
+	N_("git ahead-behind --base=<ref> [ --contains ] [ --stdin | <revs> ]"),
 	NULL
 };
 
@@ -31,7 +31,7 @@ int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 {
 	const char *base_ref = NULL;
 	struct commit *base;
-	int from_stdin = 0;
+	int from_stdin = 0, contains = 0;
 	struct string_list tips = STRING_LIST_INIT_DUP;
 	struct commit **commits;
 	struct ahead_behind_count *counts;
@@ -41,6 +41,7 @@ int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 		OPT_STRING('b', "base", &base_ref, N_("base"), N_("base reference to process")),
 		OPT_BOOL(0 , "stdin", &from_stdin, N_("read rev names from stdin")),
 		OPT_BOOL(0 , "ignore-missing", &ignore_missing, N_("ignore missing tip references")),
+		OPT_BOOL(0 , "contains", &contains, N_("only check that tips are reachable from the base")),
 		OPT_END()
 	};
 
@@ -51,6 +52,10 @@ int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 		usage_with_options(ahead_behind_usage, ahead_behind_opts);
 
 	git_config(git_default_config, NULL);
+
+	base = lookup_commit_reference_by_name(base_ref);
+	if (!base)
+		die(_("could not resolve '%s'"), base_ref);
 
 	if (from_stdin) {
 		struct strbuf line = STRBUF_INIT;
@@ -75,6 +80,24 @@ int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 	/* Early return for no tips. */
 	if (!tips.nr)
 		return 0;
+
+	if (contains) {
+		struct string_list_item *item;
+
+		/* clear out */
+		for_each_string_list_item(item, &tips)
+			item->util = NULL;
+
+		tips_reachable_from_base(base, &tips);
+
+		for_each_string_list_item(item, &tips) {
+			if (item->util)
+				printf("%s\n", item->string);
+		}
+
+		return 0;
+	}
+	/* else: not --contains, but normal ahead-behind counting. */
 
 	ALLOC_ARRAY(commits, tips.nr + 1);
 	ALLOC_ARRAY(counts, tips.nr);

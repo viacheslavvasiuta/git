@@ -505,4 +505,62 @@ test_expect_success 'ahead-behind:none' '
 	run_all_modes git ahead-behind --base=commit-8-4 --stdin
 '
 
+test_expect_success 'ahead-behind--contains:all' '
+	cat >input <<-\EOF &&
+	commit-1-1
+	commit-2-4
+	commit-4-2
+	commit-4-4
+	EOF
+	cat >expect <<-\EOF &&
+	commit-1-1
+	commit-2-4
+	commit-4-2
+	commit-4-4
+	EOF
+	run_all_modes git ahead-behind --contains --base=commit-5-5 \
+		--stdin --use-bitmap-index
+'
+
+test_expect_success 'ahead-behind--contains:some' '
+	cat >input <<-\EOF &&
+	commit-1-1
+	commit-5-3
+	commit-4-8
+	commit-9-9
+	EOF
+	cat >expect <<-\EOF &&
+	commit-1-1
+	commit-5-3
+	EOF
+	run_all_modes git ahead-behind --contains --base=commit-9-6 \
+		--stdin --use-bitmap-index
+'
+
+test_expect_success 'ahead-behind--contains:some, reordered' '
+	cat >input <<-\EOF &&
+	commit-4-8
+	commit-5-3
+	commit-9-9
+	commit-1-1
+	EOF
+	cat >expect <<-\EOF &&
+	commit-5-3
+	commit-1-1
+	EOF
+	run_all_modes git ahead-behind --contains --base=commit-9-6 \
+		--stdin --use-bitmap-index
+'
+
+test_expect_success 'ahead-behind--contains:none' '
+	cat >input <<-\EOF &&
+	commit-7-5
+	commit-4-8
+	commit-9-9
+	EOF
+	>expect &&
+	run_all_modes git ahead-behind --contains --base=commit-8-4 \
+		--stdin --use-bitmap-index
+'
+
 test_done

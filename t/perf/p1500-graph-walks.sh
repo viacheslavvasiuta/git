@@ -22,4 +22,8 @@ test_perf 'ahead-behind counts: git rev-list' '
 	done
 '
 
+test_perf 'ahead-behind counts: git ahead-behind --contains' '
+	git ahead-behind --contains --base=HEAD --stdin <refs
+'
+
 test_done

@@ -2292,23 +2292,29 @@ void read_very_early_config(config_fn_t cb, void *data)
 	config_with_options(cb, data, NULL, &opts);
 }
 
-static struct config_set_element *configset_find_element(struct config_set *cs, const char *key)
+RESULT_MUST_BE_USED
+static int configset_find_element(struct config_set *cs, const char *key,
+				  struct config_set_element **dest)
 {
 	struct config_set_element k;
 	struct config_set_element *found_entry;
 	char *normalized_key;
+	int ret;
+
 	/*
 	 * `key` may come from the user, so normalize it before using it
 	 * for querying entries from the hashmap.
 	 */
-	if (git_config_parse_key(key, &normalized_key, NULL))
-		return NULL;
+	ret = git_config_parse_key(key, &normalized_key, NULL);
+	if (ret)
+		return ret;
 
 	hashmap_entry_init(&k.ent, strhash(normalized_key));
 	k.key = normalized_key;
 	found_entry = hashmap_get_entry(&cs->config_hash, &k, ent, NULL);
 	free(normalized_key);
-	return found_entry;
+	*dest = found_entry;
+	return 0;
 }
 
 static int configset_add_value(struct config_set *cs, const char *key, const char *value)
@@ -2317,8 +2323,11 @@ static int configset_add_value(struct config_set *cs, const char *key, const cha
 	struct string_list_item *si;
 	struct configset_list_item *l_item;
 	struct key_value_info *kv_info = xmalloc(sizeof(*kv_info));
+	int ret;
 
-	e = configset_find_element(cs, key);
+	ret = configset_find_element(cs, key, &e);
+	if (ret)
+		return ret;
 	/*
 	 * Since the keys are being fed by git_config*() callback mechanism, they
 	 * are already normalized. So simply add them without any further munging.
@@ -2412,109 +2421,157 @@ int git_configset_add_file(struct config_set *cs, const char *filename)
 int git_configset_get_value(struct config_set *cs, const char *key, const char **value)
 {
 	const struct string_list *values = NULL;
+	int ret;
+
 	/*
 	 * Follows "last one wins" semantic, i.e., if there are multiple matches for the
 	 * queried key in the files of the configset, the value returned will be the last
 	 * value in the value list for that key.
 	 */
-	values = git_configset_get_value_multi(cs, key);
+	if ((ret = git_configset_get_value_multi(cs, key, &values)))
+		return ret;
 
-	if (!values)
-		return 1;
 	assert(values->nr > 0);
 	*value = values->items[values->nr - 1].string;
 	return 0;
 }
 
-const struct string_list *git_configset_get_value_multi(struct config_set *cs, const char *key)
+int git_configset_get_value_multi(struct config_set *cs, const char *key,
+				  const struct string_list **dest)
 {
-	struct config_set_element *e = configset_find_element(cs, key);
-	return e ? &e->value_list : NULL;
+	struct config_set_element *e;
+	int ret;
+
+	if ((ret = configset_find_element(cs, key, &e)))
+		return ret;
+	else if (!e)
+		return 1;
+	*dest = &e->value_list;
+
+	return 0;
+}
+
+static int check_multi_string(struct string_list_item *item, void *util)
+{
+	return item->string ? 0 : config_error_nonbool(util);
+}
+
+int git_configset_get_string_multi(struct config_set *cs, const char *key,
+				   const struct string_list **dest)
+{
+	int ret;
+
+	if ((ret = git_configset_get_value_multi(cs, key, dest)))
+		return ret;
+	if ((ret = for_each_string_list((struct string_list *)*dest,
+					check_multi_string, (void *)key)))
+		return ret;
+
+	return 0;
+}
+
+int git_configset_get(struct config_set *cs, const char *key)
+{
+	struct config_set_element *e;
+	int ret;
+
+	if ((ret = configset_find_element(cs, key, &e)))
+		return ret;
+	else if (!e)
+		return 1;
+	return 0;
 }
 
 int git_configset_get_string(struct config_set *cs, const char *key, char **dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value))
-		return git_config_string((const char **)dest, key, value);
-	else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	return git_config_string((const char **)dest, key, value);
 }
 
 static int git_configset_get_string_tmp(struct config_set *cs, const char *key,
 					const char **dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value)) {
-		if (!value)
-			return config_error_nonbool(key);
-		*dest = value;
-		return 0;
-	} else {
-		return 1;
-	}
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	if (!value)
+		return config_error_nonbool(key);
+	*dest = value;
+	return 0;
 }
 
 int git_configset_get_int(struct config_set *cs, const char *key, int *dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value)) {
-		*dest = git_config_int(key, value);
-		return 0;
-	} else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	*dest = git_config_int(key, value);
+	return 0;
 }
 
 int git_configset_get_ulong(struct config_set *cs, const char *key, unsigned long *dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value)) {
-		*dest = git_config_ulong(key, value);
-		return 0;
-	} else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	*dest = git_config_ulong(key, value);
+	return 0;
 }
 
 int git_configset_get_bool(struct config_set *cs, const char *key, int *dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value)) {
-		*dest = git_config_bool(key, value);
-		return 0;
-	} else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	*dest = git_config_bool(key, value);
+	return 0;
 }
 
 int git_configset_get_bool_or_int(struct config_set *cs, const char *key,
 				int *is_bool, int *dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value)) {
-		*dest = git_config_bool_or_int(key, value, is_bool);
-		return 0;
-	} else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	*dest = git_config_bool_or_int(key, value, is_bool);
+	return 0;
 }
 
 int git_configset_get_maybe_bool(struct config_set *cs, const char *key, int *dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value)) {
-		*dest = git_parse_maybe_bool(value);
-		if (*dest == -1)
-			return -1;
-		return 0;
-	} else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	*dest = git_parse_maybe_bool(value);
+	if (*dest == -1)
+		return -1;
+	return 0;
 }
 
 int git_configset_get_pathname(struct config_set *cs, const char *key, const char **dest)
 {
 	const char *value;
-	if (!git_configset_get_value(cs, key, &value))
-		return git_config_pathname(dest, key, value);
-	else
-		return 1;
+	int ret;
+
+	if ((ret = git_configset_get_value(cs, key, &value)))
+		return ret;
+	return git_config_pathname(dest, key, value);
 }
 
 /* Functions use to read configuration from a repository */
@@ -2568,6 +2625,12 @@ void repo_config(struct repository *repo, config_fn_t fn, void *data)
 	configset_iter(repo->config, fn, data);
 }
 
+int repo_config_get(struct repository *repo, const char *key)
+{
+	git_config_check_init(repo);
+	return git_configset_get(repo->config, key);
+}
+
 int repo_config_get_value(struct repository *repo,
 			  const char *key, const char **value)
 {
@@ -2575,11 +2638,18 @@ int repo_config_get_value(struct repository *repo,
 	return git_configset_get_value(repo->config, key, value);
 }
 
-const struct string_list *repo_config_get_value_multi(struct repository *repo,
-						      const char *key)
+int repo_config_get_value_multi(struct repository *repo, const char *key,
+				const struct string_list **dest)
 {
 	git_config_check_init(repo);
-	return git_configset_get_value_multi(repo->config, key);
+	return git_configset_get_value_multi(repo->config, key, dest);
+}
+
+int repo_config_get_string_multi(struct repository *repo, const char *key,
+				 const struct string_list **dest)
+{
+	git_config_check_init(repo);
+	return git_configset_get_string_multi(repo->config, key, dest);
 }
 
 int repo_config_get_string(struct repository *repo,
@@ -2682,14 +2752,25 @@ void git_config_clear(void)
 	repo_config_clear(the_repository);
 }
 
+int git_config_get(const char *key)
+{
+	return repo_config_get(the_repository, key);
+}
+
 int git_config_get_value(const char *key, const char **value)
 {
 	return repo_config_get_value(the_repository, key, value);
 }
 
-const struct string_list *git_config_get_value_multi(const char *key)
+int git_config_get_value_multi(const char *key, const struct string_list **dest)
 {
-	return repo_config_get_value_multi(the_repository, key);
+	return repo_config_get_value_multi(the_repository, key, dest);
+}
+
+int git_config_get_string_multi(const char *key,
+				const struct string_list **dest)
+{
+	return repo_config_get_string_multi(the_repository, key, dest);
 }
 
 int git_config_get_string(const char *key, char **dest)
@@ -2750,9 +2831,11 @@ int git_config_get_expiry_in_days(const char *key, timestamp_t *expiry, timestam
 	const char *expiry_string;
 	intmax_t days;
 	timestamp_t when;
+	int ret;
 
-	if (git_config_get_string_tmp(key, &expiry_string))
-		return 1; /* no such thing */
+	if ((ret = git_config_get_string_tmp(key, &expiry_string)))
+		/* no such thing, or git_config_parse_key() failure etc. */
+		return ret;
 
 	if (git_parse_signed(expiry_string, &days, maximum_signed_value_of_type(int))) {
 		const int scale = 86400;
@@ -2795,6 +2878,7 @@ int git_config_get_max_percent_split_change(void)
 int git_config_get_index_threads(int *dest)
 {
 	int is_bool, val;
+	int ret;
 
 	val = git_env_ulong("GIT_TEST_INDEX_THREADS", 0);
 	if (val) {
@@ -2802,15 +2886,14 @@ int git_config_get_index_threads(int *dest)
 		return 0;
 	}
 
-	if (!git_config_get_bool_or_int("index.threads", &is_bool, &val)) {
-		if (is_bool)
-			*dest = val ? 0 : 1;
-		else
-			*dest = val;
-		return 0;
-	}
-
-	return 1;
+	if ((ret = git_config_get_bool_or_int("index.threads", &is_bool,
+					      &val)))
+		return ret;
+	if (is_bool)
+		*dest = val ? 0 : 1;
+	else
+		*dest = val;
+	return 0;
 }
 
 NORETURN
@@ -2836,7 +2919,8 @@ void git_die_config(const char *key, const char *err, ...)
 		error_fn(err, params);
 		va_end(params);
 	}
-	values = git_config_get_value_multi(key);
+	if (git_config_get_value_multi(key, &values))
+		BUG("for key '%s' we must have a value to report on", key);
 	kv_info = values->items[values->nr - 1].util;
 	git_die_config_linenr(key, kv_info->filename, kv_info->linenr);
 }

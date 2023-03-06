@@ -8,6 +8,7 @@
 #include "revision.h"
 #include "tag.h"
 #include "commit-reach.h"
+#include "ewah/ewok.h"
 
 /* Remember to update object flag allocation in object.h */
 #define PARENT1		(1u<<16)
@@ -940,4 +941,98 @@ struct commit_list *get_reachable_subset(struct commit **from, int nr_from,
 	clear_commit_marks_many(nr_from, from, PARENT2);
 
 	return found_commits;
+}
+
+define_commit_slab(bit_arrays, struct bitmap *);
+static struct bit_arrays bit_arrays;
+
+static void insert_no_dup(struct prio_queue *queue, struct commit *c)
+{
+	if (c->object.flags & PARENT2)
+		return;
+	prio_queue_put(queue, c);
+	c->object.flags |= PARENT2;
+}
+
+static struct bitmap *init_bit_array(struct commit *c, int width)
+{
+	struct bitmap **bitmap = bit_arrays_at(&bit_arrays, c);
+	if (!*bitmap)
+		*bitmap = bitmap_word_alloc(width);
+	return *bitmap;
+}
+
+static void free_bit_array(struct commit *c)
+{
+	struct bitmap **bitmap = bit_arrays_at(&bit_arrays, c);
+	if (!*bitmap)
+		return;
+	bitmap_free(*bitmap);
+	*bitmap = NULL;
+}
+
+void ahead_behind(struct commit **commits, size_t commits_nr,
+		  struct ahead_behind_count *counts, size_t counts_nr)
+{
+	struct prio_queue queue = { compare_commits_by_gen_then_commit_date };
+	size_t width = (commits_nr + BITS_IN_EWORD - 1) / BITS_IN_EWORD;
+	size_t i;
+
+	if (!commits_nr || !counts_nr)
+		return;
+
+	for (i = 0; i < counts_nr; i++) {
+		counts[i].ahead = 0;
+		counts[i].behind = 0;
+	}
+
+	ensure_generations_valid(commits, commits_nr);
+
+	init_bit_arrays(&bit_arrays);
+
+	for (i = 0; i < commits_nr; i++) {
+		struct commit *c = commits[i];
+		struct bitmap *bitmap = init_bit_array(c, width);
+
+		bitmap_set(bitmap, i);
+		insert_no_dup(&queue, c);
+	}
+
+	while (queue_has_nonstale(&queue)) {
+		struct commit *c = prio_queue_get(&queue);
+		struct commit_list *p;
+		struct bitmap *bitmap_c = init_bit_array(c, width);
+
+		for (i = 0; i < counts_nr; i++) {
+			int reach_from_tip = bitmap_get(bitmap_c, counts[i].tip_index);
+			int reach_from_base = bitmap_get(bitmap_c, counts[i].base_index);
+
+			if (reach_from_tip ^ reach_from_base) {
+				if (reach_from_base)
+					counts[i].behind++;
+				else
+					counts[i].ahead++;
+			}
+		}
+
+		for (p = c->parents; p; p = p->next) {
+			struct bitmap *bitmap_p;
+
+			parse_commit(p->item);
+
+			bitmap_p = init_bit_array(p->item, width);
+			bitmap_or(bitmap_p, bitmap_c);
+
+			if (bitmap_popcount(bitmap_p) == commits_nr)
+				p->item->object.flags |= STALE;
+
+			insert_no_dup(&queue, p->item);
+		}
+
+		free_bit_array(c);
+	}
+
+	repo_clear_commit_marks(the_repository, PARENT2 | STALE);
+	clear_bit_arrays(&bit_arrays);
+	clear_prio_queue(&queue);
 }

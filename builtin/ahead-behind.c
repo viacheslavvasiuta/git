@@ -2,6 +2,7 @@
 #include "parse-options.h"
 #include "config.h"
 #include "commit.h"
+#include "commit-reach.h"
 
 static const char * const ahead_behind_usage[] = {
 	N_("git ahead-behind --base=<ref> [ --stdin | <revs> ]"),
@@ -29,8 +30,12 @@ static int handle_arg(struct string_list *tips, const char *arg)
 int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 {
 	const char *base_ref = NULL;
+	struct commit *base;
 	int from_stdin = 0;
 	struct string_list tips = STRING_LIST_INIT_DUP;
+	struct commit **commits;
+	struct ahead_behind_count *counts;
+	size_t i;
 
 	struct option ahead_behind_opts[] = {
 		OPT_STRING('b', "base", &base_ref, N_("base"), N_("base reference to process")),
@@ -71,5 +76,23 @@ int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 	if (!tips.nr)
 		return 0;
 
+	ALLOC_ARRAY(commits, tips.nr + 1);
+	ALLOC_ARRAY(counts, tips.nr);
+
+	for (i = 0; i < tips.nr; i++) {
+		commits[i] = tips.items[i].util;
+		counts[i].tip_index = i;
+		counts[i].base_index = tips.nr;
+	}
+	commits[tips.nr] = base;
+
+	ahead_behind(commits, tips.nr + 1, counts, tips.nr);
+
+	for (i = 0; i < tips.nr; i++)
+		printf("%s %d %d\n", tips.items[i].string,
+		       counts[i].ahead, counts[i].behind);
+
+	free(counts);
+	free(commits);
 	return 0;
 }

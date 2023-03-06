@@ -50,6 +50,12 @@ OPTIONS
 	Read revision tips and ranges from stdin instead of from the
 	command-line.
 
+--ignore-missing::
+	When parsing tip references, ignore any references that are not
+	found. This is useful when operating in an environment where a
+	reference could be deleted between reading the reference and
+	starting the `git ahead-behind` process.
+
 
 SEE ALSO
 --------

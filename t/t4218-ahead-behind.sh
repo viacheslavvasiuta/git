@@ -19,6 +19,12 @@ test_expect_success 'git ahead-behind with broken tip' '
 	grep "could not resolve '\''bogus'\''" err
 '
 
+test_expect_success 'git ahead-behind with broken tip and --ignore-missing' '
+	git ahead-behind --base=HEAD --ignore-missing bogus 2>err >out &&
+	test_must_be_empty err &&
+	test_must_be_empty out
+'
+
 test_expect_success 'git ahead-behind without tips' '
 	git ahead-behind --base=HEAD 2>err &&
 	test_must_be_empty err

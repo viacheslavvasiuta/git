@@ -8,13 +8,18 @@ static const char * const ahead_behind_usage[] = {
 	NULL
 };
 
+static int ignore_missing;
+
 static int handle_arg(struct string_list *tips, const char *arg)
 {
 	struct string_list_item *item;
 	struct commit *c = lookup_commit_reference_by_name(arg);
 
-	if (!c)
+	if (!c) {
+		if (ignore_missing)
+			return 0;
 		return error(_("could not resolve '%s'"), arg);
+	}
 
 	item = string_list_append(tips, arg);
 	item->util = c;
@@ -30,6 +35,7 @@ int cmd_ahead_behind(int argc, const char **argv, const char *prefix)
 	struct option ahead_behind_opts[] = {
 		OPT_STRING('b', "base", &base_ref, N_("base"), N_("base reference to process")),
 		OPT_BOOL(0 , "stdin", &from_stdin, N_("read rev names from stdin")),
+		OPT_BOOL(0 , "ignore-missing", &ignore_missing, N_("ignore missing tip references")),
 		OPT_END()
 	};
 

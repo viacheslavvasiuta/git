@@ -12,59 +12,24 @@
 #include "git-compat-util.h"
 #include "wildmatch.h"
 
-typedef unsigned char uchar;
-
-/* What character marks an inverted character class? */
-#define NEGATE_CLASS	'!'
-#define NEGATE_CLASS2	'^'
-
 #define CC_EQ(class, len, litmatch) ((len) == sizeof (litmatch)-1 \
 				    && *(class) == *(litmatch) \
-				    && strncmp((char*)class, litmatch, len) == 0)
-
-#if defined STDC_HEADERS || !defined isascii
-# define ISASCII(c) 1
-#else
-# define ISASCII(c) isascii(c)
-#endif
-
-#ifdef isblank
-# define ISBLANK(c) (ISASCII(c) && isblank(c))
-#else
-# define ISBLANK(c) ((c) == ' ' || (c) == '\t')
-#endif
-
-#ifdef isgraph
-# define ISGRAPH(c) (ISASCII(c) && isgraph(c))
-#else
-# define ISGRAPH(c) (ISASCII(c) && isprint(c) && !isspace(c))
-#endif
-
-#define ISPRINT(c) (ISASCII(c) && isprint(c))
-#define ISDIGIT(c) (ISASCII(c) && isdigit(c))
-#define ISALNUM(c) (ISASCII(c) && isalnum(c))
-#define ISALPHA(c) (ISASCII(c) && isalpha(c))
-#define ISCNTRL(c) (ISASCII(c) && iscntrl(c))
-#define ISLOWER(c) (ISASCII(c) && islower(c))
-#define ISPUNCT(c) (ISASCII(c) && ispunct(c))
-#define ISSPACE(c) (ISASCII(c) && isspace(c))
-#define ISUPPER(c) (ISASCII(c) && isupper(c))
-#define ISXDIGIT(c) (ISASCII(c) && isxdigit(c))
+				    && strncmp(class, litmatch, len) == 0)
 
 /* Match pattern "p" against "text" */
-static int dowild(const uchar *p, const uchar *text, unsigned int flags)
+int wildmatch(const char *p, const char *text, unsigned int flags)
 {
-	uchar p_ch;
-	const uchar *pattern = p;
+	char p_ch;
+	const char *pattern = p;
 
 	for ( ; (p_ch = *p) != '\0'; text++, p++) {
 		int matched, match_slash, negated;
-		uchar t_ch, prev_ch;
+		char t_ch, prev_ch;
 		if ((t_ch = *text) == '\0' && p_ch != '*')
 			return WM_ABORT_ALL;
-		if ((flags & WM_CASEFOLD) && ISUPPER(t_ch))
+		if ((flags & WM_CASEFOLD) && isupper(t_ch))
 			t_ch = tolower(t_ch);
-		if ((flags & WM_CASEFOLD) && ISUPPER(p_ch))
+		if ((flags & WM_CASEFOLD) && isupper(p_ch))
 			p_ch = tolower(p_ch);
 		switch (p_ch) {
 		case '\\':
@@ -83,7 +48,7 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 			continue;
 		case '*':
 			if (*++p == '*') {
-				const uchar *prev_p = p - 2;
+				const char *prev_p = p - 2;
 				while (*++p == '*') {}
 				if (!(flags & WM_PATHNAME))
 					/* without WM_PATHNAME, '*' == '**' */
@@ -101,7 +66,7 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 					 * both foo/bar and foo/a/bar.
 					 */
 					if (p[0] == '/' &&
-					    dowild(p + 1, text, flags) == WM_MATCH)
+					    wildmatch(p + 1, text, flags) == WM_MATCH)
 						return WM_MATCH;
 					match_slash = 1;
 				} else /* WM_PATHNAME is set */
@@ -123,10 +88,9 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 				 * with WM_PATHNAME matches the next
 				 * directory
 				 */
-				const char *slash = strchr((char*)text, '/');
-				if (!slash)
+				text = strchr(text, '/');
+				if (!text)
 					return WM_NOMATCH;
-				text = (const uchar*)slash;
 				/* the slash is consumed by the top-level for loop */
 				break;
 			}
@@ -143,11 +107,11 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 				 */
 				if (!is_glob_special(*p)) {
 					p_ch = *p;
-					if ((flags & WM_CASEFOLD) && ISUPPER(p_ch))
+					if ((flags & WM_CASEFOLD) && isupper(p_ch))
 						p_ch = tolower(p_ch);
 					while ((t_ch = *text) != '\0' &&
 					       (match_slash || t_ch != '/')) {
-						if ((flags & WM_CASEFOLD) && ISUPPER(t_ch))
+						if ((flags & WM_CASEFOLD) && isupper(t_ch))
 							t_ch = tolower(t_ch);
 						if (t_ch == p_ch)
 							break;
@@ -156,7 +120,7 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 					if (t_ch != p_ch)
 						return WM_NOMATCH;
 				}
-				if ((matched = dowild(p, text, flags)) != WM_NOMATCH) {
+				if ((matched = wildmatch(p, text, flags)) != WM_NOMATCH) {
 					if (!match_slash || matched != WM_ABORT_TO_STARSTAR)
 						return matched;
 				} else if (!match_slash && t_ch == '/')
@@ -166,12 +130,8 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 			return WM_ABORT_ALL;
 		case '[':
 			p_ch = *++p;
-#ifdef NEGATE_CLASS2
-			if (p_ch == NEGATE_CLASS2)
-				p_ch = NEGATE_CLASS;
-#endif
 			/* Assign literal 1/0 because of "matched" comparison. */
-			negated = p_ch == NEGATE_CLASS ? 1 : 0;
+			negated = p_ch == '!' || p_ch == '^' ? 1 : 0;
 			if (negated) {
 				/* Inverted character class. */
 				p_ch = *++p;
@@ -196,14 +156,14 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 					}
 					if (t_ch <= p_ch && t_ch >= prev_ch)
 						matched = 1;
-					else if ((flags & WM_CASEFOLD) && ISLOWER(t_ch)) {
-						uchar t_ch_upper = toupper(t_ch);
+					else if ((flags & WM_CASEFOLD) && islower(t_ch)) {
+						char t_ch_upper = toupper(t_ch);
 						if (t_ch_upper <= p_ch && t_ch_upper >= prev_ch)
 							matched = 1;
 					}
 					p_ch = 0; /* This makes "prev_ch" get set to 0. */
 				} else if (p_ch == '[' && p[1] == ':') {
-					const uchar *s;
+					const char *s;
 					int i;
 					for (s = p += 2; (p_ch = *p) && p_ch != ']'; p++) {} /*SHARED ITERATOR*/
 					if (!p_ch)
@@ -218,42 +178,42 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 						continue;
 					}
 					if (CC_EQ(s,i, "alnum")) {
-						if (ISALNUM(t_ch))
+						if (isalnum(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "alpha")) {
-						if (ISALPHA(t_ch))
+						if (isalpha(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "blank")) {
-						if (ISBLANK(t_ch))
+						if (isblank(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "cntrl")) {
-						if (ISCNTRL(t_ch))
+						if (iscntrl(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "digit")) {
-						if (ISDIGIT(t_ch))
+						if (isdigit(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "graph")) {
-						if (ISGRAPH(t_ch))
+						if (isgraph(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "lower")) {
-						if (ISLOWER(t_ch))
+						if (islower(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "print")) {
-						if (ISPRINT(t_ch))
+						if (isprint(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "punct")) {
-						if (ISPUNCT(t_ch))
+						if (ispunct(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "space")) {
-						if (ISSPACE(t_ch))
+						if (isspace(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "upper")) {
-						if (ISUPPER(t_ch))
+						if (isupper(t_ch))
 							matched = 1;
-						else if ((flags & WM_CASEFOLD) && ISLOWER(t_ch))
+						else if ((flags & WM_CASEFOLD) && islower(t_ch))
 							matched = 1;
 					} else if (CC_EQ(s,i, "xdigit")) {
-						if (ISXDIGIT(t_ch))
+						if (isxdigit(t_ch))
 							matched = 1;
 					} else /* malformed [:class:] string */
 						return WM_ABORT_ALL;
@@ -269,10 +229,4 @@ static int dowild(const uchar *p, const uchar *text, unsigned int flags)
 	}
 
 	return *text ? WM_NOMATCH : WM_MATCH;
-}
-
-/* Match the "pattern" against the "text" string. */
-int wildmatch(const char *pattern, const char *text, unsigned int flags)
-{
-	return dowild((const uchar*)pattern, (const uchar*)text, flags);
 }

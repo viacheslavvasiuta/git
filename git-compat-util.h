@@ -1212,10 +1212,12 @@ extern const unsigned char tolower_trans_tbl[256];
 /* Sane ctype - no locale, and works with signed chars */
 #undef isascii
 #undef isspace
+#undef isblank
 #undef isdigit
 #undef isalpha
 #undef isalnum
 #undef isprint
+#undef isgraph
 #undef islower
 #undef isupper
 #undef tolower
@@ -1237,10 +1239,12 @@ extern const signed char hexval_table[256];
 #define sane_istest(x,mask) ((sane_ctype[(unsigned char)(x)] & (mask)) != 0)
 #define isascii(x) (((x) & ~0x7f) == 0)
 #define isspace(x) sane_istest(x,GIT_SPACE)
+#define isblank(x) sane_isblank(x)
 #define isdigit(x) sane_istest(x,GIT_DIGIT)
 #define isalpha(x) sane_istest(x,GIT_ALPHA)
 #define isalnum(x) sane_istest(x,GIT_ALPHA | GIT_DIGIT)
 #define isprint(x) ((x) >= 0x20 && (x) <= 0x7e)
+#define isgraph(x) sane_isgraph(x)
 #define islower(x) sane_iscase(x, 1)
 #define isupper(x) sane_iscase(x, 0)
 #define is_glob_special(x) sane_istest(x,GIT_GLOB_SPECIAL)
@@ -1269,6 +1273,16 @@ static inline int sane_iscase(int x, int is_lower)
 		return (x & 0x20) != 0;
 	else
 		return (x & 0x20) == 0;
+}
+
+static inline int sane_isblank(int c)
+{
+	return c == ' ' || c == '\t';
+}
+
+static inline int sane_isgraph(int c)
+{
+	return isprint(c) && !isspace(c);
 }
 
 /*
